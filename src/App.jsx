@@ -654,63 +654,196 @@ function Summary({ sel, goTab }) {
 }
 
 /* ============================== RFP ============================== */
-const H2P_SRCS = [
-  "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js",
-  "https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js",
-];
-function loadScriptOnce(src) {
-  return new Promise((resolve, reject) => {
-    const sc = document.createElement("script");
-    sc.src = src;
-    sc.onload = () => resolve();
-    sc.onerror = () => reject(new Error("failed: " + src));
-    document.head.appendChild(sc);
-  });
-}
-async function loadHtml2pdf() {
-  if (typeof window !== "undefined" && window.html2pdf) return window.html2pdf;
-  for (const src of H2P_SRCS) {
-    try {
-      await loadScriptOnce(src);
-      if (window.html2pdf) return window.html2pdf;
-    } catch (e) { /* 次のCDNを試行 */ }
+function renderRfp(doc, autoTable, chosen, company, todayStr) {
+  const yen = (n) => "¥" + n.toLocaleString();
+  const manRange = (m) => (m[0] / 1e4).toLocaleString() + "–" + (m[1] / 1e4).toLocaleString() + "万円";
+  const EVAL = [["コスト", "40", "年間コスト、削減額・削減率、料金体系の妥当性"], ["品質・安定性", "25", "サービス品質、供給・通信の安定性、実績"], ["移行容易性", "20", "移行負荷、通信断／供給断の有無、違約金、リードタイム"], ["サポート体制・SLA", "15", "対応窓口・時間、障害対応、復旧目標の明確さ"]];
+  const SCHED = [["RFP発行", "2026年5月27日"], ["質問受付期限", "2026年6月10日"], ["提案書 提出期限", "2026年6月24日 17:00"], ["一次評価・絞り込み", "2026年7月1日"], ["提案プレゼンテーション", "2026年7月8日"], ["最終選定・内示", "2026年7月15日"], ["契約締結（予定）", "2026年8月3日"], ["切替・移行開始", "2026年9月1日"]];
+  const ASKS = ["料金体系：初期費用／月額／従量／手数料の内訳と算定根拠", "移行計画：スケジュール・体制・想定リスクと対策（通信断・供給断の有無を含む）", "サポート体制・SLA：窓口、対応時間、障害時対応、復旧目標", "契約条件：最低契約期間、違約金、更新条件、解約条件", "実績・導入事例：同規模・同業種での導入実績", "セキュリティ・コンプライアンス体制", "貴社の担当体制および当社との連絡フロー"];
+  const NOTES = ["本書および本件に関して知り得た情報は秘密として取り扱ってください。", "提案書の作成・提出に要する費用は、提案者のご負担となります。", "評価・選定の結果およびその理由は、原則として開示いたしません。", "本RFPは契約の締結を確約するものではありません。"];
+  const teal = [14, 90, 81], teal2 = [19, 119, 107], ink = [22, 32, 43], ink2 = [44, 55, 66],
+    save = [21, 128, 99], muted = [113, 123, 132], faint = [150, 158, 165], hair = [214, 220, 217],
+    terra = [180, 84, 47], tint = [238, 244, 242], warm = [244, 247, 245];
+  const mL = 16, mR = 16, pageW = 210, cW = pageW - mL - mR, bottom = 276;
+  let y = 0;
+  const F = (s) => doc.setFont("JP", "normal").setFontSize(s);
+  const col = (c) => doc.setTextColor(c[0], c[1], c[2]);
+  function txt(str, x, yy, o) { o = o || {}; F(o.size || 10); col(o.rgb || ink); doc.text(str, x, yy, { align: o.align || "left", maxWidth: o.maxW, lineHeightFactor: o.lh || 1.3 }); }
+  function ensure(h) { if (y + h > bottom) { doc.addPage(); y = 24; } }
+  function hrule(yy, c, w) { c = c || hair; doc.setDrawColor(c[0], c[1], c[2]); doc.setLineWidth(w || 0.2); doc.line(mL, yy, pageW - mR, yy); }
+
+  // ---------- COVER ----------
+  doc.setFillColor(teal[0], teal[1], teal[2]); doc.rect(0, 0, 3.5, 297, "F");
+  txt("RFP-2026-001", pageW - mR, 20, { align: "right", size: 9.5, rgb: muted });
+  txt("REQUEST FOR PROPOSAL", mL + 6, 44, { size: 10, rgb: teal });
+  txt("提案依頼書", mL + 6, 62, { size: 30, rgb: ink });
+  txt("間接費最適化に伴う取引先選定について", mL + 6, 74, { size: 13.5, rgb: ink2 });
+  doc.setDrawColor(ink[0], ink[1], ink[2]); doc.setLineWidth(0.5); doc.line(mL + 6, 82, mL + 6 + 46, 82);
+  const meta = [["発行者", company + " 経営企画部"], ["発行日", todayStr], ["文書番号", "RFP-2026-001"], ["提出期限", "2026年6月24日（火）17:00 必着"], ["対象領域", chosen.length + "領域（後掲スコープ参照）"], ["データ出典", "請求書データ ／ 発注先DB"]];
+  let my = 96;
+  meta.forEach(([k, v]) => { txt(k, mL + 6, my, { size: 10, rgb: muted }); txt(v, mL + 44, my, { size: 10.5, rgb: ink }); hrule(my + 3, hair, 0.2); my += 9.5; });
+  // confidential box
+  const by = my + 6, bh = 22;
+  doc.setFillColor(tint[0], tint[1], tint[2]); doc.rect(mL + 6, by, cW - 12, bh, "F");
+  doc.setFillColor(teal[0], teal[1], teal[2]); doc.rect(mL + 6, by, 1.4, bh, "F");
+  txt("本書の取扱いについて", mL + 12, by + 7, { size: 10, rgb: teal });
+  txt("本書および関連資料は秘密情報です。提案目的以外での使用・第三者への開示を禁じます。本書は発注を確約するものではありません。", mL + 12, by + 13, { size: 9, rgb: ink2, maxW: cW - 24, lh: 1.4 });
+
+  // ---------- helpers for content ----------
+  function sectionHead(no, title, kick) {
+    ensure(20); y += 4;
+    txt(kick || "SECTION", mL, y, { size: 8, rgb: teal }); y += 6.5;
+    F(22); col(teal); doc.text(no, mL, y);
+    F(14.5); col(ink); doc.text(title, mL + (no.length > 1 ? 14 : 10), y);
+    y += 3; doc.setDrawColor(ink[0], ink[1], ink[2]); doc.setLineWidth(0.5); doc.line(mL, y, pageW - mR, y); y += 7;
   }
-  throw new Error("html2pdf load failed");
+  function para(str) { F(10); const lines = doc.splitTextToSize(str, cW); ensure(lines.length * 5 + 2); col(ink2); doc.text(lines, mL, y, { lineHeightFactor: 1.45 }); y += lines.length * 5.0 + 3; }
+  function bullets(items, rgb) {
+    items.forEach((it) => {
+      F(9.8); const lines = doc.splitTextToSize(it, cW - 6); ensure(lines.length * 4.8 + 1.5);
+      doc.setFillColor(rgb[0], rgb[1], rgb[2]); doc.rect(mL + 0.5, y - 2.6, 1.6, 1.6, "F");
+      col(ink); doc.text(lines, mL + 5, y, { lineHeightFactor: 1.4 }); y += lines.length * 4.8 + 1.6;
+    });
+  }
+  const table = (head, body, colStyles, opts) => {
+    opts = opts || {};
+    autoTable(doc, {
+      startY: y, margin: { left: mL, right: mR },
+      head: [head], body,
+      styles: { font: "JP", fontStyle: "normal", fontSize: 8.6, cellPadding: 1.9, textColor: ink, lineColor: hair, lineWidth: 0.1, overflow: "linebreak" },
+      headStyles: { fillColor: teal, textColor: [255, 255, 255], fontSize: 8.4, lineWidth: 0, halign: "left" },
+      alternateRowStyles: { fillColor: [246, 249, 248] },
+      columnStyles: colStyles || {},
+      theme: "striped",
+      didParseCell: (d) => { if (opts.totalRow && d.section === "body" && d.row.index === body.length - 1) { d.cell.styles.fillColor = warm; d.cell.styles.textColor = ink; } },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  };
+
+  // sections start on page 2
+  doc.addPage(); y = 24;
+
+  // 1 背景
+  sectionHead("01", "本依頼の背景と目的");
+  para("当社は2025年度の間接費を電子請求書データの分析により、販管費率が業界中央値（24.5%）を3.3ポイント上回る27.8%であることを把握しました。全社で年間 約5,060万円 の削減ポテンシャルを特定しています。");
+  const totCur = chosen.reduce((s, p) => s + p.current, 0), totSav = chosen.reduce((s, p) => s + p.saving, 0);
+  para("本提案依頼書（RFP）は、下記スコープに掲げる領域（合計年間 約" + Math.round(totSav / 1e4).toLocaleString() + "万円の削減見込）について、最適な取引先を選定するため、貴社からのご提案を依頼するものです。");
+
+  // 2 スコープ
+  sectionHead("02", "調達対象範囲（スコープ）");
+  const scopeBody = chosen.map((p) => [p.cat, yen(p.current), manRange(p.market), yen(p.current - p.saving), yen(p.saving), p.rate + "%"]);
+  scopeBody.push(["合　計", yen(totCur), "—", yen(totCur - totSav), yen(totSav), (totSav / totCur * 100).toFixed(1) + "%"]);
+  table(["対象領域", "現状コスト", "年間相場", "目標コスト", "削減額", "削減率"], scopeBody,
+    { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" } }, { totalRow: true });
+
+  // 3 要件
+  sectionHead("03", "領域別の要件");
+  chosen.forEach((p, i) => {
+    ensure(14);
+    F(11.5); col(ink); doc.text((i + 1) + ". " + p.cat, mL, y);
+    F(9.5); col(muted); doc.text("｜ 重視点：" + p.focus, mL + doc.getTextWidth((i + 1) + ". " + p.cat) + 3, y);
+    y += 6;
+    F(9.5); col(terra); doc.text("必須要件", mL, y); y += 5; bullets(p.req.must, terra);
+    y += 1; F(9.5); col(teal); doc.text("歓迎要件", mL, y); y += 5; bullets(p.req.want, teal);
+    y += 4;
+  });
+
+  // 4 依頼事項
+  sectionHead("04", "提案に含めていただきたい事項");
+  ASKS.forEach((t, i) => {
+    F(9.8); const lines = doc.splitTextToSize(t, cW - 8); ensure(lines.length * 4.8 + 1.5);
+    col(teal); doc.text(("0" + (i + 1)).slice(-2), mL, y);
+    col(ink); doc.text(lines, mL + 7, y, { lineHeightFactor: 1.4 }); y += lines.length * 4.8 + 1.8;
+  });
+
+  // 5 評価
+  sectionHead("05", "評価基準と配点");
+  const evb = EVAL.map((r) => r.slice()); evb.push(["合　計", "100", "—"]);
+  table(["評価項目", "配点", "主な評価の観点"], evb, { 1: { halign: "center", cellWidth: 18 }, 0: { cellWidth: 38 } }, { totalRow: true });
+
+  // 6 スケジュール
+  sectionHead("06", "選定スケジュール");
+  table(["区分", "日程"], SCHED, { 0: { cellWidth: 70 } });
+
+  // 7 提出・留意
+  sectionHead("07", "提出方法・留意事項");
+  bullets(["提出方法：電子データ（PDF）をメール添付にて提出。様式は自由ですが「4.」を網羅してください。", "提出先：経営企画部 調達企画グループ（rfp@greenfield.example.co.jp）"].concat(NOTES), teal);
+
+  // 付録A 候補
+  sectionHead("A", "参考候補事業者リスト（発注先DB抽出）", "APPENDIX");
+  chosen.forEach((p) => {
+    ensure(20);
+    F(11); col(ink); doc.text("■ " + p.cat, mL, y); y += 3;
+    const cs = p.candidates.filter((c) => !c.base);
+    const body = cs.map((c) => [c.name, yen(c.est), yen(p.current - c.est), "★ " + c.rating, c.tags.join("／")]);
+    table(["候補事業者", "想定年間", "削減額", "評価", "主な特徴"], body,
+      { 1: { halign: "right", cellWidth: 26 }, 2: { halign: "right", cellWidth: 24 }, 3: { halign: "center", cellWidth: 16 }, 0: { cellWidth: 42 } });
+  });
+
+  // footer on all pages
+  const total = doc.getNumberOfPages();
+  for (let i = 1; i <= total; i++) {
+    doc.setPage(i);
+    F(7.5); col(faint);
+    doc.text("BtoBプラットフォーム生産性Up ／ 本書はサンプル（モック）です。金額・取引先・他社比較はサンプルであり、実在の事業者・契約とは関係ありません。", mL, 289);
+    doc.text(String(i) + " / " + total, pageW - mR, 289, { align: "right" });
+  }
 }
+
+let _libP = null;
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => { const sc = document.createElement("script"); sc.src = src; sc.onload = () => resolve(); sc.onerror = () => reject(new Error(src)); document.head.appendChild(sc); });
+}
+function loadPdfLibs() {
+  const ready = () => window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable;
+  if (ready()) return Promise.resolve(window.jspdf);
+  if (_libP) return _libP;
+  _libP = (async () => {
+    if (!(window.jspdf && window.jspdf.jsPDF)) {
+      try { await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"); }
+      catch (e) { await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"); }
+    }
+    if (!(window.jspdf.jsPDF.API && window.jspdf.jsPDF.API.autoTable)) {
+      try { await loadScriptOnce("https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"); }
+      catch (e) { await loadScriptOnce("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"); }
+    }
+    return window.jspdf;
+  })().catch((e) => { _libP = null; throw e; });
+  return _libP;
+}
+let _fontP = null;
+function loadJpFont() {
+  if (_fontP) return _fontP;
+  _fontP = fetch("/fonts/ipag.ttf").then((r) => { if (!r.ok) throw new Error("font fetch failed"); return r.arrayBuffer(); }).then((buf) => {
+    const bytes = new Uint8Array(buf); let bin = ""; const CH = 0x8000;
+    for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    return btoa(bin);
+  }).catch((e) => { _fontP = null; throw e; });
+  return _fontP;
+}
+
 function RfpDoc({ sel, goTab }) {
   const mob = useIsMobile();
   const chosen = PLANS.filter((p) => sel[p.id]).sort((a, b) => b.saving - a.saving);
   const [busy, setBusy] = useState(false);
   const downloadPdf = async () => {
-    const src = document.getElementById("rfp-sheet");
-    if (!src || busy) return;
+    if (busy || chosen.length === 0) return;
     setBusy(true);
-    // 閲覧環境（特にスマホ幅）に依存しないよう、固定幅A4相当の複製を一時生成してPDF化する
-    const PXW = 800;
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "position:fixed;left:-10000px;top:0;width:" + PXW + "px;background:#ffffff;z-index:-1;";
-    const clone = src.cloneNode(true);
-    clone.style.width = PXW + "px";
-    clone.style.maxWidth = "none";
-    clone.style.margin = "0";
-    clone.style.boxShadow = "none";
-    clone.style.borderRadius = "0";
-    wrap.appendChild(clone);
-    document.body.appendChild(wrap);
     try {
-      const h2p = await loadHtml2pdf();
-      await h2p().set({
-        margin: [10, 10, 12, 10],
-        filename: "提案依頼書_RFP.pdf",
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true, width: PXW, windowWidth: PXW },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "legacy"] },
-      }).from(clone).save();
+      await loadPdfLibs();
+      const fontB64 = await loadJpFont();
+      const JsPDF = window.jspdf.jsPDF;
+      const doc = new JsPDF({ unit: "mm", format: "a4" });
+      doc.addFileToVFS("ipag.ttf", fontB64);
+      doc.addFont("ipag.ttf", "JP", "normal");
+      doc.setFont("JP");
+      const autoTableFn = (d, opts) => d.autoTable(opts);
+      const today = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" });
+      renderRfp(doc, autoTableFn, chosen, COMPANY, today);
+      doc.save("提案依頼書_RFP.pdf");
     } catch (e) {
       alert("PDFの生成に失敗しました。通信環境をご確認のうえ、再度お試しください。");
     } finally {
-      document.body.removeChild(wrap);
       setBusy(false);
     }
   };
