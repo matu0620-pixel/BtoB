@@ -682,22 +682,35 @@ function RfpDoc({ sel, goTab }) {
   const chosen = PLANS.filter((p) => sel[p.id]).sort((a, b) => b.saving - a.saving);
   const [busy, setBusy] = useState(false);
   const downloadPdf = async () => {
-    const el = document.getElementById("rfp-sheet");
-    if (!el || busy) return;
+    const src = document.getElementById("rfp-sheet");
+    if (!src || busy) return;
     setBusy(true);
+    // 閲覧環境（特にスマホ幅）に依存しないよう、固定幅A4相当の複製を一時生成してPDF化する
+    const PXW = 800;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:fixed;left:-10000px;top:0;width:" + PXW + "px;background:#ffffff;z-index:-1;";
+    const clone = src.cloneNode(true);
+    clone.style.width = PXW + "px";
+    clone.style.maxWidth = "none";
+    clone.style.margin = "0";
+    clone.style.boxShadow = "none";
+    clone.style.borderRadius = "0";
+    wrap.appendChild(clone);
+    document.body.appendChild(wrap);
     try {
       const h2p = await loadHtml2pdf();
       await h2p().set({
-        margin: [8, 8, 10, 8],
+        margin: [10, 10, 12, 10],
         filename: "提案依頼書_RFP.pdf",
         image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true, windowWidth: el.scrollWidth },
+        html2canvas: { scale: 2, backgroundColor: "#ffffff", useCORS: true, width: PXW, windowWidth: PXW },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak: { mode: ["css", "legacy"] },
-      }).from(el).save();
+      }).from(clone).save();
     } catch (e) {
       alert("PDFの生成に失敗しました。通信環境をご確認のうえ、再度お試しください。");
     } finally {
+      document.body.removeChild(wrap);
       setBusy(false);
     }
   };
